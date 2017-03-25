@@ -1,0 +1,21 @@
+{
+  "name": "hack-the-world",
+  "version": "1.0.0",
+  "description": "A full-service dashboard for Tap The Data customers",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "author": "Aryan Jabbari <Aryan.Jabbari21@Qmail.cuny.edu>",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^1.17.1",
+    "cors": "^2.8.1",
+    "dotenv": "^4.0.0",
+    "express": "^4.15.2",
+    "mysql": "^2.13.0",
+    "path": "^0.12.7",
+    "squel": "^5.8.0"
+  }
+}
