@@ -26,6 +26,7 @@ router.param('externalId', (req, res, next, externalId) => {
 
       req.qualityScore = parseInt(rows[0].quality_score);
 
+      // beers at bar
       req.brandNames = [];
       for (let i = 0; i < rows.length; ++i) {
         let brandName = rows[i].brand_name;
@@ -36,10 +37,11 @@ router.param('externalId', (req, res, next, externalId) => {
             return;
           }
           const imageUrl = untappedJson.beers.items[0].beer.beer_label;
-          req.brandNames.push({ name: brandName, imageUrl: imageUrl })
+          req.brandNames.push({ name: brandName, imageUrl: imageUrl });
         });
       }
 
+      // Similar beers
       const range = 2;
       const topQualityScore = req.qualityScore + range;
       const bottomQualityScore = req.qualityScore - range;
@@ -66,11 +68,33 @@ router.param('externalId', (req, res, next, externalId) => {
 
   });
 });
+
 router.get('/:externalId', (req, res) => {
   res.json({
     qualityScore: req.qualityScore,
     brandNames: req.brandNames,
     similarBeers: req.similarBeers
+  });
+});
+
+router.get('/', (req, res) => {
+  const barIdsQuery = squel
+      .select()
+      .from('bar_scores')
+      .field('external_id')
+      .distinct()
+      .field('quality_score')
+      .order('external_id')
+      .toString();
+
+  db.getConnection((err, connection) => {
+    if (err) console.error(err);
+
+    connection.query(barIdsQuery, (err, rows) => {
+      if (err) console.error(err);
+
+      res.json(rows);
+    });
   });
 });
 
