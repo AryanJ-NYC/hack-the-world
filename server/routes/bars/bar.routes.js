@@ -8,7 +8,6 @@ router.param('externalId', (req, res, next, externalId) => {
       .select()
       .from('bar_scores')
       .left_join('quality_and_loc', 'quality_and_loc', 'bar_scores.external_id = quality_and_loc.external_id')
-      .left_join('bar_scores', 'similar_scores', 'similar_scores.quality_score > bar_scores.quality_score-2 AND similar_scores.quality_score < bar_scores.quality_score+2')
       .field('bar_scores.quality_score')
       .distinct()
       .field('quality_and_loc.brand_name')
@@ -22,14 +21,35 @@ router.param('externalId', (req, res, next, externalId) => {
         return res.json({message: `No bar with ID ${externalId}`});
       }
 
-      req.qualityScore = rows[0].quality_score;
+      req.qualityScore = parseInt(rows[0].quality_score);
 
       req.brandNames = [];
       for (let i = 0; i < rows.length; ++i) {
         req.brandNames.push(rows[i].brand_name);
       }
-      connection.release();
-      next();
+
+      const range = 2
+      const topQualityScore = req.qualityScore + range;
+      const bottomQualityScore = req.qualityScore - range;
+      const similarBeerQuery = `
+      SELECT
+        DISTINCT quality_and_loc.brand_name,
+        beer_total_consumption.total_consumption
+      FROM bar_scores
+	      LEFT JOIN quality_and_loc quality_and_loc ON (bar_scores.external_id = quality_and_loc.external_id) 
+	      LEFT JOIN beer_total_consumption ON quality_and_loc.brand_name=beer_total_consumption.brand_name
+      WHERE (bar_scores.quality_score < ${topQualityScore} AND bar_scores.quality_score > ${bottomQualityScore})
+      ORDER BY beer_total_consumption.total_consumption DESC LIMIT 10;`;
+
+      connection.query(similarBeerQuery, (err, rows) => {
+        req.similarBeers = [];
+        for (let i = 0; i < rows.length; ++i) {
+          req.similarBeers.push({name: rows[i].brand_name, total_consumption: rows[i].total_consumption});
+        }
+
+        connection.release();
+        next();
+      });
     });
 
   });
@@ -37,7 +57,8 @@ router.param('externalId', (req, res, next, externalId) => {
 router.get('/:externalId', (req, res) => {
   res.json({
     qualityScore: req.qualityScore,
-    brandNames: req.brandNames
+    brandNames: req.brandNames,
+    similarBeers: req.similarBeers
   });
 });
 
