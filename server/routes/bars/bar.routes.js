@@ -1,6 +1,9 @@
 const db = require('../../config/database').connectionPool,
       squel = require('squel'),
+      request = require('request'),
       router = require('express').Router();
+
+const untappdRoot = `https://api.untappd.com/v4/search/beer?client_id=${process.env.UNTAPPD_CLIENT_ID}&client_secret=3A42276AFB59D83D2ACA1FFCE5956BF72B5CC255`;
 
 router.param('externalId', (req, res, next, externalId) => {
   if (isNaN(externalId)) return res.json({'error': `${externalId} is not a number`});
@@ -25,10 +28,19 @@ router.param('externalId', (req, res, next, externalId) => {
 
       req.brandNames = [];
       for (let i = 0; i < rows.length; ++i) {
-        req.brandNames.push(rows[i].brand_name);
+        let brandName = rows[i].brand_name;
+        request(`${untappdRoot}&q=${brandName}&limit=1`, (err, res, body) => {
+          const untappedJson = JSON.parse(body).response;
+          if (untappedJson.length === 0) {
+            req.brandNames.push({name: brandName});
+            return;
+          }
+          const imageUrl = untappedJson.beers.items[0].beer.beer_label;
+          req.brandNames.push({ name: brandName, imageUrl: imageUrl })
+        });
       }
 
-      const range = 2
+      const range = 2;
       const topQualityScore = req.qualityScore + range;
       const bottomQualityScore = req.qualityScore - range;
       const similarBeerQuery = `
