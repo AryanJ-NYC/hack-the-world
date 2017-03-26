@@ -29,16 +29,17 @@ router.param('externalId', (req, res, next, externalId) => {
       // beers at bar
       req.brandNames = [];
       for (let i = 0; i < rows.length; ++i) {
-        let brandName = rows[i].brand_name;
+        const brandName = rows[i].brand_name;
+        let beer = { name: brandName };
+
         request(`${untappdRoot}&q=${brandName}&limit=1`, (err, res, body) => {
           const untappedJson = JSON.parse(body).response;
-          if (untappedJson.length === 0) {
-            req.brandNames.push({name: brandName});
-            return;
+          if (untappedJson.length > 0 && untappedJson.beers.count > 0) {
+            const imageUrl = untappedJson.beers.items[0].beer.beer_label;
+            beer.imageUrl = imageUrl;
           }
-          const imageUrl = untappedJson.beers.items[0].beer.beer_label;
-          req.brandNames.push({ name: brandName, imageUrl: imageUrl });
         });
+        req.brandNames.push(beer);
       }
 
       // Similar beers
@@ -47,18 +48,32 @@ router.param('externalId', (req, res, next, externalId) => {
       const bottomQualityScore = req.qualityScore - range;
       const similarBeerQuery = `
       SELECT
-        DISTINCT quality_and_loc.brand_name,
-        beer_total_consumption.total_consumption
-      FROM bar_scores
-	      LEFT JOIN quality_and_loc quality_and_loc ON (bar_scores.external_id = quality_and_loc.external_id) 
-	      LEFT JOIN beer_total_consumption ON quality_and_loc.brand_name=beer_total_consumption.brand_name
-      WHERE (bar_scores.quality_score < ${topQualityScore} AND bar_scores.quality_score > ${bottomQualityScore})
-      ORDER BY beer_total_consumption.total_consumption DESC LIMIT 10;`;
+        bar_brand_consumption.brand_name,
+        SUM(bar_brand_consumption.total_consumption) AS total_consumption
+      FROM bar_brand_consumption
+        INNER JOIN bar_scores ON bar_brand_consumption.external_id = bar_scores.external_id
+      WHERE bar_scores.quality_score > ${bottomQualityScore} AND bar_scores.quality_score < ${topQualityScore}
+        GROUP BY bar_brand_consumption.brand_name
+        ORDER BY total_consumption DESC
+      LIMIT 10`;
 
       connection.query(similarBeerQuery, (err, rows) => {
         req.similarBeers = [];
         for (let i = 0; i < rows.length; ++i) {
-          req.similarBeers.push({name: rows[i].brand_name, total_consumption: rows[i].total_consumption});
+          const brandName = rows[i].brand_name;
+          const totalConsumption = rows[i].total_consumption;
+          let similarBeer = { name: brandName, total_consumption: totalConsumption };
+
+          // get beer URLs
+          request(`${untappdRoot}&q=${brandName}&limit=1`, (err, res, body) => {
+            const untappdJson = JSON.parse(body).response;
+
+            if (untappdJson.length > 0 && untappdJson.beers.count > 0) {
+              const imageUrl = untappdJson.beers.items[0].beer.beer_label;
+              similarBeer.imageUrl = imageUrl;
+            }
+          });
+          req.similarBeers.push(similarBeer);
         }
 
         connection.release();
@@ -94,6 +109,7 @@ router.get('/', (req, res) => {
       if (err) console.error(err);
 
       res.json(rows);
+      connection.release();
     });
   });
 });
